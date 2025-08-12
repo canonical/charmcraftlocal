@@ -1,0 +1,37 @@
+[project]
+name = "charmcraftlocal"
+dynamic = ["version"]
+description = "Pack charms with local Python package dependencies"
+authors = [
+    {name = "Carl Csaposs", email = "carl.csaposs@canonical.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+]
+
+[project.urls]
+repository = "https://github.com/canonical/charmcraftlocal"
+
+[tool.poetry]
+version = "0.0.0"  # Overriden by poetry-dynamic-versioning
+requires-poetry = ">=2.0"
+
+[tool.poetry.requires-plugins]
+poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
+
+[tool.poetry-dynamic-versioning]
+enable = true
+vcs = "git"
+dirty = true
+strict = true
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
+build-backend = "poetry_dynamic_versioning.backend"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+extend-select = ["I", "UP"]
