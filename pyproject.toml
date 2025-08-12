@@ -9,6 +9,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "typer>=0.16.0",
+    "requests>=2.32.4",
+    "tomli>=2.2.1",
+    "charm-refresh-build-version>=0.4.0",
 ]
 
 [project.urls]
