@@ -83,12 +83,34 @@ class State:
         logger.debug(f"Version: {installed_version}")
 
 
+def get_local_packages(*, pyproject_toml: pathlib.Path, running_outside_charmcraft: bool):
+    try:
+        with pyproject_toml.open("rb") as file:
+            pyproject = tomli.load(file)
+    except FileNotFoundError:
+        logger.debug("pyproject.toml not found")
+        pyproject = {}
+    local_packages: list[LocalPackageDependency] = []
+    # Relative paths are not supported in project.dependencies, so we only need to check
+    # tool.poetry.dependencies
+    for key, value in pyproject.get("tool", {}).get("poetry", {}).get("dependencies", {}).items():
+        try:
+            local_packages.append(
+                LocalPackageDependency(
+                    key=key, value=value, running_outside_charmcraft=running_outside_charmcraft
+                )
+            )
+        except InvalidLocalPackageDependency:
+            pass
+    return local_packages
+
+
 class InvalidLocalPackageDependency(Exception):
     """Dependency is not a local Python package specified by a relative path to a directory"""
 
 
 class LocalPackageDependency:
-    def __init__(self, *, key: str, value):
+    def __init__(self, *, key: str, value, running_outside_charmcraft: bool):
         if isinstance(value, list):
             logger.warning(
                 f"Skipped dependency {repr(key)}. Multiple constraints dependencies (i.e. "
@@ -104,42 +126,45 @@ class LocalPackageDependency:
         if path.is_absolute():
             logger.debug(f"Skipped dependency {repr(key)}. Path is not relative: {repr(path)}")
             raise InvalidLocalPackageDependency
-        if path.is_symlink():
-            logger.debug(
-                f"Skipped dependency {repr(key)}. Symlink paths are not supported: {repr(path)}"
-            )
-            raise InvalidLocalPackageDependency
-        if not path.exists():
-            logger.debug(f"Skipped dependency {repr(key)}. Path does not exist: {repr(path)}")
-            raise InvalidLocalPackageDependency
-        if not path.is_dir():
-            logger.debug(f"Skipped dependency {repr(key)}. Path is not a directory: {repr(path)}")
-            raise InvalidLocalPackageDependency
-        try:
-            git_repository_root = pathlib.Path(
-                subprocess.run(
-                    ["git", "rev-parse", "--show-toplevel"],
-                    capture_output=True,
-                    check=True,
-                    text=True,
-                ).stdout.strip()
-            )
-        except FileNotFoundError:
-            raise FileNotFoundError("git not installed")
-        assert git_repository_root.is_absolute()
-        if not path.resolve(strict=True).is_relative_to(git_repository_root):
-            logger.debug(
-                f"Skipped dependency {repr(key)}. Path must be in the same git repository "
-                f"({repr(git_repository_root)}) as the current working directory. Dependency "
-                f"path: {repr(path)}"
-            )
-            raise InvalidLocalPackageDependency
-        if path.resolve(strict=True).is_relative_to(pathlib.Path.cwd()):
-            logger.debug(
-                f"Skipped dependency {repr(key)}. Path is already in charm directory. Dependency "
-                f"path: {repr(path)}"
-            )
-            raise InvalidLocalPackageDependency
+        if running_outside_charmcraft:
+            if path.is_symlink():
+                logger.debug(
+                    f"Skipped dependency {repr(key)}. Symlink paths are not supported: {repr(path)}"
+                )
+                raise InvalidLocalPackageDependency
+            if not path.exists():
+                logger.debug(f"Skipped dependency {repr(key)}. Path does not exist: {repr(path)}")
+                raise InvalidLocalPackageDependency
+            if not path.is_dir():
+                logger.debug(
+                    f"Skipped dependency {repr(key)}. Path is not a directory: {repr(path)}"
+                )
+                raise InvalidLocalPackageDependency
+            try:
+                git_repository_root = pathlib.Path(
+                    subprocess.run(
+                        ["git", "rev-parse", "--show-toplevel"],
+                        capture_output=True,
+                        check=True,
+                        text=True,
+                    ).stdout.strip()
+                )
+            except FileNotFoundError:
+                raise FileNotFoundError("git not installed")
+            assert git_repository_root.is_absolute()
+            if not path.resolve(strict=True).is_relative_to(git_repository_root):
+                logger.debug(
+                    f"Skipped dependency {repr(key)}. Path must be in the same git repository "
+                    f"({repr(git_repository_root)}) as the current working directory. Dependency "
+                    f"path: {repr(path)}"
+                )
+                raise InvalidLocalPackageDependency
+            if path.resolve(strict=True).is_relative_to(pathlib.Path.cwd()):
+                logger.debug(
+                    f"Skipped dependency {repr(key)}. Path is already in charm directory. Dependency "
+                    f"path: {repr(path)}"
+                )
+                raise InvalidLocalPackageDependency
         self.name = key
         self.original_path = path
         self.copy_for_packing_path = pathlib.Path() / path.name
@@ -209,40 +234,21 @@ def pack(
         raise FileNotFoundError(
             "charmcraft.yaml not found. `cd` into the directory with charmcraft.yaml"
         )
-    pyproject_toml = pathlib.Path("pyproject.toml")
-    pyproject_toml_backup = pathlib.Path("pyproject.toml.backup")
-    poetry_lock = pathlib.Path("poetry.lock")
-    poetry_lock_backup = pathlib.Path("poetry.lock.backup")
-    refresh_versions_toml = pathlib.Path("refresh_versions.toml")
-    refresh_versions_toml_backup = pathlib.Path("refresh_versions.toml.backup")
-    try:
-        with pyproject_toml.open("rb") as file:
-            pyproject = tomli.load(file)
-    except FileNotFoundError:
-        logger.debug("pyproject.toml not found")
-        pyproject = {}
-    local_packages: list[LocalPackageDependency] = []
-    # Relative paths are not supported in project.dependencies, so we only need to check
-    # tool.poetry.dependencies
-    for key, value in pyproject.get("tool", {}).get("poetry", {}).get("dependencies", {}).items():
-        try:
-            local_packages.append(LocalPackageDependency(key=key, value=value))
-        except InvalidLocalPackageDependency:
-            pass
+    local_packages = get_local_packages(
+        pyproject_toml=pathlib.Path("pyproject.toml"), running_outside_charmcraft=True
+    )
     if not local_packages:
         # Info instead of warning since it's expected that charmcraftlocal will be used to pack
         # charms without any local Python package dependencies
         logger.info("No local Python package dependencies detected")
-    if local_packages:
-        assert pyproject_toml.exists()
-        if not poetry_lock.exists():
-            raise FileNotFoundError("poetry.lock not found")
     for package in local_packages:
         if package.copy_for_packing_path.exists():
             raise FileExistsError(
                 f"Destination path in charm directory already exists. Delete path and retry: "
                 f"{repr(package.copy_for_packing_path)}"
             )
+    refresh_versions_toml = pathlib.Path("refresh_versions.toml")
+    refresh_versions_toml_backup = pathlib.Path("refresh_versions.toml.backup")
     try:
         if local_packages:
             if refresh_versions_toml.exists():
@@ -254,35 +260,48 @@ def pack(
                 shutil.copy2(refresh_versions_toml, refresh_versions_toml_backup)
                 charm_refresh_build_version.write_charm_version_before_pack(charm_version)
                 logger.debug("Wrote charm refresh compatibility version to refresh_versions.toml")
-            shutil.copy2(pyproject_toml, pyproject_toml_backup)
-            shutil.copy2(poetry_lock, poetry_lock_backup)
         for package in local_packages:
             shutil.copytree(package.original_path, package.copy_for_packing_path, symlinks=True)
             logger.info(
                 f"Copied {repr(package.original_path)} to {repr(package.copy_for_packing_path)}"
             )
-            run_command(["poetry", "remove", package.name, "--lock"])
-            run_command(["poetry", "add", f"./{package.copy_for_packing_path}", "--lock"])
         command = [command_name, "pack", *context.args]
         if state.verbose:
             command.append("-v")
         run_command(command)
     finally:
         if local_packages:
-            for backup, original in (
-                (refresh_versions_toml_backup, refresh_versions_toml),
-                (pyproject_toml_backup, pyproject_toml),
-                (poetry_lock_backup, poetry_lock),
-            ):
-                try:
-                    shutil.move(backup, original)
-                except FileNotFoundError:
-                    pass
+            try:
+                shutil.move(refresh_versions_toml_backup, refresh_versions_toml)
+            except FileNotFoundError:
+                pass
         for package in local_packages:
             try:
                 shutil.rmtree(package.copy_for_packing_path)
             except FileNotFoundError:
                 pass
+
+
+@app.command()
+def update_lock(verbose: Verbose = False):
+    """Update local Python package dependency paths in pyproject.toml and poetry.lock
+
+    Must be called during `charmcraft pack` (i.e. inside charmcraft.yaml)
+    """
+    if verbose:
+        # Verbose can be globally enabled from app level or command level
+        # (Therefore, we should only enable verbose—not disable it)
+        state.verbose = True
+    local_packages = get_local_packages(
+        pyproject_toml=pathlib.Path("pyproject.toml"), running_outside_charmcraft=False
+    )
+    if not local_packages:
+        raise ValueError("No local Python package dependencies detected")
+    if not pathlib.Path("poetry.lock").exists():
+        raise FileNotFoundError("poetry.lock not found")
+    for package in local_packages:
+        run_command(["poetry", "remove", package.name, "--lock"])
+        run_command(["poetry", "add", f"./{package.copy_for_packing_path}", "--lock"])
 
 
 @app.callback()
