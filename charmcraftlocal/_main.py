@@ -2,6 +2,7 @@ import importlib.metadata
 import logging
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 
@@ -12,6 +13,7 @@ import rich.text
 import tomli
 import typer
 import typing_extensions
+import yaml
 
 app = typer.Typer(help="Pack charms with local Python package dependencies")
 Verbose = typing_extensions.Annotated[bool, typer.Option("--verbose", "-v")]
@@ -83,6 +85,20 @@ class State:
         logger.debug(f"Version: {installed_version}")
 
 
+def get_git_repository_root():
+    try:
+        return pathlib.Path(
+            subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                check=True,
+                text=True,
+            ).stdout.strip()
+        )
+    except FileNotFoundError:
+        raise FileNotFoundError("git not installed")
+
+
 def get_local_packages(*, pyproject_toml: pathlib.Path, running_outside_charmcraft: bool):
     try:
         with pyproject_toml.open("rb") as file:
@@ -140,17 +156,7 @@ class LocalPackageDependency:
                     f"Skipped dependency {repr(key)}. Path is not a directory: {repr(path)}"
                 )
                 raise InvalidLocalPackageDependency
-            try:
-                git_repository_root = pathlib.Path(
-                    subprocess.run(
-                        ["git", "rev-parse", "--show-toplevel"],
-                        capture_output=True,
-                        check=True,
-                        text=True,
-                    ).stdout.strip()
-                )
-            except FileNotFoundError:
-                raise FileNotFoundError("git not installed")
+            git_repository_root = get_git_repository_root()
             assert git_repository_root.is_absolute()
             if not path.resolve(strict=True).is_relative_to(git_repository_root):
                 logger.debug(
@@ -188,14 +194,14 @@ class LocalPackageDependency:
             )
 
 
-def run_command(command: list[str]):
+def run_command(command: list[str], *, cwd=None):
     logger.debug(f"Running {command}")
     try:
-        subprocess.run(command, check=True)
+        subprocess.run(command, check=True, cwd=cwd)
     except FileNotFoundError:
         command_name = command[0]
         message = f"{command_name} not installed"
-        if command_name in ("poetry", "charmcraftcache"):
+        if command_name in ("poetry", "charmcraftcache", "git-filter-repo"):
             message += f". Run `pipx install {command_name}`"
         raise FileNotFoundError(message)
     except subprocess.CalledProcessError as exception:
@@ -302,6 +308,113 @@ def update_lock(verbose: Verbose = False):
     for package in local_packages:
         run_command(["poetry", "remove", package.name, "--lock"])
         run_command(["poetry", "add", f"./{package.copy_for_packing_path}", "--lock"])
+
+
+def validate_github_repository(value: str):
+    if not re.fullmatch(r"[a-zA-Z0-9\-]+/[a-zA-Z0-9.\-_]+", value):
+        raise typer.BadParameter(f"'{value}' is not a valid GitHub repository name")
+    return value
+
+
+@app.command()
+def mirror(
+    repository: typing_extensions.Annotated[
+        str,
+        typer.Argument(
+            callback=validate_github_repository,
+            help='GitHub repository to mirror to (e.g. "octocat/Hello-World")',
+        ),
+    ],
+    verbose: Verbose = False,
+):
+    """Mirror charm & local packages to a git repository with the charm at the repository root
+
+    Used for compatibility with tools that expect one git repository per charm and charmcraft.yaml
+    at the root of the git repository
+    """
+    if verbose:
+        # Verbose can be globally enabled from command level or app level
+        # (Therefore, we should only enable verbose—not disable it)
+        state.verbose = True
+    if not pathlib.Path("charmcraft.yaml").exists():
+        raise FileNotFoundError(
+            "charmcraft.yaml not found. `cd` into the directory with charmcraft.yaml"
+        )
+    git_repository_root = get_git_repository_root()
+    charm_directory = pathlib.Path.cwd()
+    assert git_repository_root.is_absolute() and charm_directory.is_absolute()
+    charm_directory_relative_to_root = charm_directory.relative_to(git_repository_root)
+    if charm_directory_relative_to_root == pathlib.Path():
+        raise ValueError("Charm directory is already at root of git repository")
+    local_packages = get_local_packages(
+        pyproject_toml=charm_directory / "pyproject.toml", running_outside_charmcraft=True
+    )
+    if not local_packages:
+        raise ValueError("No local Python package dependencies detected")
+
+    charm_name = yaml.safe_load((charm_directory / "metadata.yaml").read_text())["name"]
+
+    all_git_tags = subprocess.run(
+        ["git", "tag"], capture_output=True, check=True, text=True
+    ).stdout.splitlines()
+    tags_to_delete = [
+        tag
+        for tag in all_git_tags
+        # Only keep charm refresh compatibility version tags & charm revision tags
+        if not (re.fullmatch(r"v[^/]+/[^/]+", tag) or tag.startswith(f"{charm_name}/rev"))
+    ]
+    logger.debug(f"Deleting git tags {tags_to_delete}")
+    if tags_to_delete:
+        subprocess.run(["git", "tag", "--delete", *tags_to_delete], check=True)
+
+    command = [
+        "git-filter-repo",
+        "--path",
+        f"{charm_directory_relative_to_root}/",
+        # Move charm directory contents to git root
+        "--path-rename",
+        # Trailing slash required by git-filter-repo:
+        # https://github.com/newren/git-filter-repo/issues/168#issuecomment-964700747
+        f"{charm_directory_relative_to_root}/:",
+        # Remove charm name prefix from revision tags
+        "--tag-rename",
+        f"{charm_name}/rev:rev",
+    ]
+    for package in local_packages:
+        package_relative_to_root = package.original_path.resolve().relative_to(git_repository_root)
+        command.extend(
+            (
+                "--path",
+                f"{package_relative_to_root}/",
+                # Move package directory to first-level directory inside git root; use package name
+                # as directory name
+                "--path-rename",
+                # Trailing slash required by git-filter-repo:
+                # https://github.com/newren/git-filter-repo/issues/168#issuecomment-964700747
+                f"{package_relative_to_root}/:{package.copy_for_packing_path}/",
+            )
+        )
+    logger.info("Creating mirror repository git history")
+    run_command(command, cwd=git_repository_root)
+
+    subprocess.run(
+        ["git", "remote", "add", "mirror", f"https://github.com/{repository}"],
+        check=True,
+        cwd=git_repository_root,
+    )
+    current_branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        capture_output=True,
+        check=True,
+        text=True,
+        cwd=git_repository_root,
+    ).stdout.strip()
+    if not current_branch:
+        raise ValueError("HEAD detached. Unable to determine current git branch name")
+    logger.info(f"Pushing tags and {repr(current_branch)} branch to {repr(repository)} repository")
+    subprocess.run(
+        ["git", "push", "mirror", current_branch, "--tags"], check=True, cwd=git_repository_root
+    )
 
 
 @app.callback()
