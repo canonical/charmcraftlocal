@@ -12,6 +12,7 @@ dependencies = [
     "requests>=2.32.4",
     "tomli>=2.2.1",
     "charm-refresh-build-version>=0.4.0",
+    "pyyaml>=6.0.2",
 ]
 
 [project.urls]

@@ -124,7 +124,7 @@ The design was changed to maintain compatibility with tooling that expects
 - charmcraft.yaml located at the root of the git repository,
 - and `charmcraft pack` to successfully build the charm
 
-To maintain compatibility with that tooling, the `ccl mirror` command (WIP) automates the creation and updates of "mirror" git repositories that meet the above requirements.
+To maintain compatibility with that tooling, the `ccl mirror` command automates the creation and updates of "mirror" git repositories that meet the above requirements.
 
 For example, for a git repository with this directory layout
 ```
