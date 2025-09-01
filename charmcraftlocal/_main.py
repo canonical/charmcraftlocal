@@ -8,7 +8,7 @@ import subprocess
 
 import charm_refresh_build_version
 import requests
-import rich
+import rich.console
 import rich.text
 import tomli
 import typer
