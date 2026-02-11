@@ -5,6 +5,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import typing
 
 import charm_refresh_build_version
 import requests
@@ -12,7 +13,6 @@ import rich.console
 import rich.text
 import tomli
 import typer
-import typing
 import yaml
 
 app = typer.Typer(help="Pack charms with local Python package dependencies")
