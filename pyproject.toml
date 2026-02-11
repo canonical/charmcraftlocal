@@ -13,6 +13,7 @@ dependencies = [
     "tomli>=2.2.1",
     "charm-refresh-build-version>=0.4.0",
     "pyyaml>=6.0.2",
+    "typing-extensions>=4.15.0",
 ]
 
 [project.urls]
@@ -23,8 +24,8 @@ ccl = "charmcraftlocal._main:app"
 charmcraftlocal = "charmcraftlocal._main:app"
 
 [tool.poetry]
-version = "0.0.0"  # Overriden by poetry-dynamic-versioning
 requires-poetry = ">=2.0"
+version = "0.0.0"  # Overriden by poetry-dynamic-versioning
 
 [tool.poetry.requires-plugins]
 poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
