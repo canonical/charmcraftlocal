@@ -12,11 +12,11 @@ import rich.console
 import rich.text
 import tomli
 import typer
-import typing_extensions
+import typing
 import yaml
 
 app = typer.Typer(help="Pack charms with local Python package dependencies")
-Verbose = typing_extensions.Annotated[bool, typer.Option("--verbose", "-v")]
+Verbose = typing.Annotated[bool, typer.Option("--verbose", "-v")]
 running_in_ci = os.environ.get("CI") == "true"
 if running_in_ci:
     # Show colors in CI (https://rich.readthedocs.io/en/stable/console.html#terminal-detection)
@@ -220,7 +220,7 @@ def validate_command_name(command_name: str):
 def pack(
     context: typer.Context,
     verbose: Verbose = False,
-    command_name: typing_extensions.Annotated[
+    command_name: typing.Annotated[
         str, typer.Option(callback=validate_command_name, help="Program to pack charm with")
     ] = "charmcraftcache",
 ):
@@ -318,7 +318,7 @@ def validate_github_repository(value: str):
 
 @app.command()
 def mirror(
-    repository: typing_extensions.Annotated[
+    repository: typing.Annotated[
         str,
         typer.Argument(
             callback=validate_github_repository,
