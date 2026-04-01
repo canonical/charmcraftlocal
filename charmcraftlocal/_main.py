@@ -73,7 +73,7 @@ class State:
         if value == self._verbose:
             return
         self._verbose = value
-        log_format = "\[charmcraftlocal] {levelname} {message}"
+        log_format = r"\[charmcraftlocal] {levelname} {message}"
         if value:
             log_format = "{asctime} " + log_format
             logger.setLevel(logging.DEBUG)
