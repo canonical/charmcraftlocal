@@ -306,7 +306,17 @@ def update_lock(verbose: Verbose = False):
     if not pathlib.Path("poetry.lock").exists():
         raise FileNotFoundError("poetry.lock not found")
     for package in local_packages:
-        run_command(["poetry", "remove", package.name, "--lock"])
+        # Do not run `poetry remove` to avoid removing and re-adding dependencies of the local
+        # packages from poetry.lock. If a Python package is exclusively a dependency of a local
+        # package (i.e. it is not a direct or indirect dependency of the charm except via the local
+        # package), then `poetry remove` of the local package would remove the dependency package
+        # from poetry.lock. Then, when the local package is re-added, the dependency could be added
+        # at a different version from what was originally in poetry.lock.
+        # If `poetry add` is run with a local path for a package with the same name as a package
+        # already in pyproject.toml and poetry.lock, poetry will replace the existing package with
+        # the path used with `poetry add`—without changing the version of the package's
+        # dependencies in poetry.lock. (charmcraftlocal does not change the local package's
+        # name when copying it, so we can rely on this `poetry add` behavior.)
         run_command(["poetry", "add", f"./{package.copy_for_packing_path}", "--lock"])
 
 
