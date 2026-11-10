@@ -1,4 +1,8 @@
 # charmcraftlocal
+
+> [!CAUTION]
+> This project is **deprecated**. Use charmcraft >=4.5.0 and `CHARMCRAFT_EXPERIMENTAL_MONOREPO` instead: https://canonical.com/juju/docs/charmcraft/latest/howto/pack-a-charm-in-a-monorepo/
+
 Pack charms with local Python package dependencies
 
 ## Installation
