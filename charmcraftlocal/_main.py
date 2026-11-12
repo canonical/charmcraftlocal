@@ -442,14 +442,19 @@ state = State()
 logger.warning(
     "`charmcraftlocal` is deprecated. Use charmcraft >=4.5.0 and "
     "`CHARMCRAFT_EXPERIMENTAL_MONOREPO` instead: "
-    "https://canonical.com/juju/docs/charmcraft/latest/howto/pack-a-charm-in-a-monorepo/"
+    "https://canonical.com/juju/docs/charmcraft/latest/howto/pack-a-charm-in-a-monorepo/",
+    # Prevent URL from getting wrapped
+    extra={"disable_wrap": True},
 )
 if running_in_ci:
     # "::warning::" for https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#setting-a-warning-message
     console.print(
         "::warning::`charmcraftlocal` is deprecated. Use charmcraft >=4.5.0 and "
         "`CHARMCRAFT_EXPERIMENTAL_MONOREPO` instead: "
-        "https://canonical.com/juju/docs/charmcraft/latest/howto/pack-a-charm-in-a-monorepo/"
+        "https://canonical.com/juju/docs/charmcraft/latest/howto/pack-a-charm-in-a-monorepo/",
+        # Warning must be on one line to render correctly in GitHub UI
+        overflow="ignore",
+        crop=False,
     )
 response_ = requests.get("https://pypi.org/pypi/charmcraftlocal/json")
 response_.raise_for_status()
