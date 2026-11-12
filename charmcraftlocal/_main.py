@@ -447,7 +447,7 @@ logger.warning(
 if running_in_ci:
     # "::warning::" for https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#setting-a-warning-message
     console.print(
-        "::warning::`charmcraftst124` is deprecated. Use charmcraft >=4.5.0 and "
+        "::warning::`charmcraftlocal` is deprecated. Use charmcraft >=4.5.0 and "
         "`CHARMCRAFT_EXPERIMENTAL_MONOREPO` instead: "
         "https://canonical.com/juju/docs/charmcraft/latest/howto/pack-a-charm-in-a-monorepo/"
     )
