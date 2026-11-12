@@ -1,7 +1,7 @@
 [project]
 name = "charmcraftlocal"
 dynamic = ["version"]
-description = "Pack charms with local Python package dependencies"
+description = "(deprecated) Pack charms with local Python package dependencies"
 authors = [
     {name = "Carl Csaposs", email = "carl.csaposs@canonical.com"}
 ]
